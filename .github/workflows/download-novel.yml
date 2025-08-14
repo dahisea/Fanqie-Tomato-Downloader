@@ -59,150 +59,100 @@ jobs:
       - name: 安装Python依赖
         run: |
           python -m pip install --upgrade pip
-          pip install requests beautifulsoup4 fake-useragent ebooklib
+          # 检查requirements.txt是否存在
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            # 安装基础依赖
+            pip install requests beautifulsoup4 fake-useragent ebooklib
+          fi
           
-      - name: 创建必要文件
+      - name: 确保必要文件存在
         run: |
-          # 创建cookie.json文件
+          # 创建cookie.json文件（如果不存在）
           if [ ! -f "./cookie.json" ]; then
             echo '""' > "./cookie.json"
           fi
           
-          # 创建config.py配置文件
-          cat > config.py << 'EOF'
-          """配置文件"""
-          import os
-
-          CONFIG = {
-              "max_workers": int(os.environ.get("THREADS", "4")),
-              "request_timeout": 15,
-              "status_file": "chapter.json",
-              "auth_token": "wcnmd91jb",
-              "server_url": "https://dlbkltos.s7123.xyz:5080/api/sources",
-              "api_endpoints": [],
-              "batch_config": {
-                  "enabled": False
-              }
-          }
-
-          class Config:
-              @staticmethod
-              def get(key, default=None):
-                  return CONFIG.get(key, default)
-          EOF
-          
-          # 创建简化的模块化组件
-          cat > network.py << 'EOF'
-          """网络管理模块"""
-          class NetworkManager:
-              pass
-          EOF
-          
-          cat > content_processor.py << 'EOF'
-          """内容处理模块"""
-          class ContentProcessor:
-              pass
-          EOF
-          
-          cat > download_engine.py << 'EOF'
-          """下载引擎模块"""
-          class DownloadEngine:
-              pass
-          EOF
-          
-          cat > file_output.py << 'EOF'
-          """文件输出模块"""
-          class FileOutputManager:
-              pass
-          EOF
-          
-          cat > state_manager.py << 'EOF'
-          """状态管理模块"""
-          class StateManager:
-              pass
-          EOF
-          
-      - name: 准备增强版下载脚本
+      - name: 准备下载脚本
         run: |
-          cat > enhanced_download.py << 'EOF'
+          cat > download_novel.py << 'EOF'
           import sys
           import os
-          import time
+          import importlib.util
 
-          def run_enhanced_download():
-              # 导入增强版下载器
-              from enhanced_novel_downloader import EnhancedNovelDownloader
-              
-              # 获取参数
-              novel_id = sys.argv[1]
-              output_format = sys.argv[2].lower()
-              threads = int(sys.argv[3])
-              start_chapter_str = sys.argv[4] if len(sys.argv) > 4 else ""
-              end_chapter_str = sys.argv[5] if len(sys.argv) > 5 else ""
-              
-              save_path = "novel_output"
-              os.makedirs(save_path, exist_ok=True)
-              
-              # 处理章节范围
-              start_chapter = None
-              end_chapter = None
-              if start_chapter_str and end_chapter_str:
-                  try:
-                      start_chapter = int(start_chapter_str) - 1  # 转换为0基索引
-                      end_chapter = int(end_chapter_str) - 1
-                      print(f"指定章节范围: {start_chapter_str}-{end_chapter_str}")
-                  except ValueError:
-                      print("章节范围参数无效，将下载全部章节")
-              
-              # 设置线程数
-              from config import CONFIG
-              CONFIG["max_workers"] = threads
-              
-              # 初始化下载器
-              downloader = EnhancedNovelDownloader()
-              
-              def progress_callback(progress, message):
-                  if progress >= 0:
-                      print(f"进度: {progress:.1f}% - {message}")
-                  else:
-                      print(message)
-              
-              downloader.progress_callback = progress_callback
-              
-              print(f"开始下载小说 ID: {novel_id}")
-              print(f"保存路径: {save_path}")
-              print(f"使用线程数: {threads}")
-              print(f"输出格式: {output_format}")
-              
-              try:
-                  # 运行下载
-                  downloader.run_download(novel_id, save_path, output_format, start_chapter, end_chapter)
-                  print("✅ 下载完成！")
-                  
-                  # 列出下载的文件
-                  print("\n📚 下载的文件列表:")
-                  for file in os.listdir(save_path):
-                      file_path = os.path.join(save_path, file)
-                      if os.path.isfile(file_path):
-                          file_size = os.path.getsize(file_path) / 1024  # KB
-                          print(f"  📄 {file} ({file_size:.2f} KB)")
-                          
-              except Exception as e:
-                  print(f"❌ 下载失败: {str(e)}")
-                  sys.exit(1)
-
-          if __name__ == "__main__":
-              run_enhanced_download()
-          EOF
+          # 获取参数
+          novel_id = sys.argv[1]
+          output_format = sys.argv[2].lower()
+          threads = int(sys.argv[3])
+          start_chapter_str = sys.argv[4] if len(sys.argv) > 4 else ""
+          end_chapter_str = sys.argv[5] if len(sys.argv) > 5 else ""
           
-          # 重命名2.py为enhanced_novel_downloader.py以便导入
-          cp 2.py enhanced_novel_downloader.py
+          save_path = "novel_output"
+          os.makedirs(save_path, exist_ok=True)
+
+          # 导入2.py中的下载器
+          spec = importlib.util.spec_from_file_location("novel_downloader", "2.py")
+          novel_downloader = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(novel_downloader)
+
+          # 初始化增强版下载器
+          downloader = novel_downloader.EnhancedNovelDownloader()
+          
+          # 处理章节范围
+          start_chapter = None
+          end_chapter = None
+          if start_chapter_str and end_chapter_str:
+              try:
+                  start_chapter = int(start_chapter_str) - 1  # 转换为0基索引
+                  end_chapter = int(end_chapter_str) - 1
+                  print(f"指定章节范围: {start_chapter_str}-{end_chapter_str}")
+              except ValueError:
+                  print("章节范围参数无效，将下载全部章节")
+
+          # 设置线程数
+          if hasattr(novel_downloader, 'CONFIG'):
+              novel_downloader.CONFIG["max_workers"] = threads
+
+          def progress_callback(progress, message):
+              if progress >= 0:
+                  print(f"进度: {progress:.1f}% - {message}")
+              else:
+                  print(message)
+
+          downloader.progress_callback = progress_callback
+
+          print(f"开始下载小说 ID: {novel_id}")
+          print(f"保存路径: {save_path}")
+          print(f"使用线程数: {threads}")
+          print(f"输出格式: {output_format}")
+
+          try:
+              # 运行增强版下载
+              downloader.run_download(novel_id, save_path, output_format, start_chapter, end_chapter)
+              print("✅ 下载完成！")
+              
+              # 列出下载的文件
+              print("\n📚 下载的文件列表:")
+              for file in os.listdir(save_path):
+                  file_path = os.path.join(save_path, file)
+                  if os.path.isfile(file_path):
+                      file_size = os.path.getsize(file_path) / 1024  # KB
+                      print(f"  📄 {file} ({file_size:.2f} KB)")
+                      
+          except Exception as e:
+              print(f"❌ 下载失败: {str(e)}")
+              # 即使出错也尝试保存已下载的内容
+              if os.path.exists(save_path) and os.listdir(save_path):
+                  print("尝试保存已下载的部分内容...")
+              raise
+          EOF
           
       - name: 设置环境变量
         run: |
           echo "THREADS=${{ github.event.inputs.threads }}" >> $GITHUB_ENV
           
-      - name: 执行增强版下载
+      - name: 执行下载
         run: |
           echo "🚀 启动增强版番茄小说下载器..."
           
@@ -215,7 +165,7 @@ jobs:
           fi
           
           echo "参数: $ARGS"
-          python enhanced_download.py $ARGS
+          python download_novel.py $ARGS
           
       - name: 验证下载结果
         run: |
