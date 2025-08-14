@@ -1,4 +1,4 @@
-name: 在线下载小说
+name: 增强版番茄小说下载器
 
 on:
   workflow_dispatch:  # 允许手动触发工作流
@@ -9,7 +9,7 @@ on:
       threads:
         description: '下载线程数 (1-10)'
         required: true
-        default: '5'
+        default: '4'
       format:
         description: '输出格式'
         required: true
@@ -18,6 +18,19 @@ on:
           - txt
           - epub
         default: 'txt'
+      start_chapter:
+        description: '起始章节 (可选，从1开始)'
+        required: false
+        default: ''
+      end_chapter:
+        description: '结束章节 (可选，包含)'
+        required: false
+        default: ''
+      use_enhanced_api:
+        description: '使用增强API获取详细信息'
+        required: false
+        type: boolean
+        default: true
 
 # 添加必要的权限
 permissions:
@@ -27,86 +40,328 @@ permissions:
 jobs:
   download-novel:
     runs-on: ubuntu-latest
+    
     steps:
       - name: 检出代码
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         
-      - name: 设置Python
+      - name: 设置Python环境
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
           cache: 'pip'
           
-      - name: 安装依赖
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-dev python3-pip
+          
+      - name: 安装Python依赖
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install requests beautifulsoup4 fake-useragent ebooklib
           
-      - name: 确保cookie.json存在
+      - name: 创建必要文件
         run: |
+          # 创建cookie.json文件
           if [ ! -f "./cookie.json" ]; then
             echo '""' > "./cookie.json"
           fi
           
-      - name: 准备下载脚本
-        run: |
-          cat > download_novel.py << 'EOF'
-          import sys
+          # 创建config.py配置文件
+          cat > config.py << 'EOF'
+          """配置文件"""
           import os
-          import importlib.util
 
-          # 获取参数
-          novel_id = sys.argv[1]
-          output_format = sys.argv[2].lower()
-          threads = int(sys.argv[3])
-          save_path = "novel_output"
+          CONFIG = {
+              "max_workers": int(os.environ.get("THREADS", "4")),
+              "request_timeout": 15,
+              "status_file": "chapter.json",
+              "auth_token": "wcnmd91jb",
+              "server_url": "https://dlbkltos.s7123.xyz:5080/api/sources",
+              "api_endpoints": [],
+              "batch_config": {
+                  "enabled": False
+              }
+          }
 
-          # 确保输出目录存在
-          os.makedirs(save_path, exist_ok=True)
-
-          # 导入2.py中的函数
-          spec = importlib.util.spec_from_file_location("novel_downloader", "2.py")
-          novel_downloader = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(novel_downloader)
-
-          # 设置参数
-          novel_downloader.MAX_WORKERS = threads
-          novel_downloader.OUTPUT_FORMAT = output_format
-
-          # 启动下载
-          print(f"开始下载小说 ID: {novel_id}")
-          print(f"保存路径: {save_path}")
-          print(f"使用线程数: {threads}")
-          print(f"输出格式: {output_format}")
-          novel_downloader.Run(novel_id, save_path)
-          print("下载完成！")
-
-          # 列出下载的文件
-          print("\n下载的文件列表:")
-          for file in os.listdir(save_path):
-              file_path = os.path.join(save_path, file)
-              file_size = os.path.getsize(file_path) / 1024  # KB
-              print(f"- {file} ({file_size:.2f} KB)")
+          class Config:
+              @staticmethod
+              def get(key, default=None):
+                  return CONFIG.get(key, default)
           EOF
           
-      - name: 下载小说
+          # 创建简化的模块化组件
+          cat > network.py << 'EOF'
+          """网络管理模块"""
+          class NetworkManager:
+              pass
+          EOF
+          
+          cat > content_processor.py << 'EOF'
+          """内容处理模块"""
+          class ContentProcessor:
+              pass
+          EOF
+          
+          cat > download_engine.py << 'EOF'
+          """下载引擎模块"""
+          class DownloadEngine:
+              pass
+          EOF
+          
+          cat > file_output.py << 'EOF'
+          """文件输出模块"""
+          class FileOutputManager:
+              pass
+          EOF
+          
+          cat > state_manager.py << 'EOF'
+          """状态管理模块"""
+          class StateManager:
+              pass
+          EOF
+          
+      - name: 准备增强版下载脚本
         run: |
-          echo "开始下载小说..."
-          python download_novel.py "${{ github.event.inputs.novel_id }}" "${{ github.event.inputs.format }}" "${{ github.event.inputs.threads }}"
+          cat > enhanced_download.py << 'EOF'
+          import sys
+          import os
+          import time
+
+          def run_enhanced_download():
+              # 导入增强版下载器
+              from enhanced_novel_downloader import EnhancedNovelDownloader
+              
+              # 获取参数
+              novel_id = sys.argv[1]
+              output_format = sys.argv[2].lower()
+              threads = int(sys.argv[3])
+              start_chapter_str = sys.argv[4] if len(sys.argv) > 4 else ""
+              end_chapter_str = sys.argv[5] if len(sys.argv) > 5 else ""
+              
+              save_path = "novel_output"
+              os.makedirs(save_path, exist_ok=True)
+              
+              # 处理章节范围
+              start_chapter = None
+              end_chapter = None
+              if start_chapter_str and end_chapter_str:
+                  try:
+                      start_chapter = int(start_chapter_str) - 1  # 转换为0基索引
+                      end_chapter = int(end_chapter_str) - 1
+                      print(f"指定章节范围: {start_chapter_str}-{end_chapter_str}")
+                  except ValueError:
+                      print("章节范围参数无效，将下载全部章节")
+              
+              # 设置线程数
+              from config import CONFIG
+              CONFIG["max_workers"] = threads
+              
+              # 初始化下载器
+              downloader = EnhancedNovelDownloader()
+              
+              def progress_callback(progress, message):
+                  if progress >= 0:
+                      print(f"进度: {progress:.1f}% - {message}")
+                  else:
+                      print(message)
+              
+              downloader.progress_callback = progress_callback
+              
+              print(f"开始下载小说 ID: {novel_id}")
+              print(f"保存路径: {save_path}")
+              print(f"使用线程数: {threads}")
+              print(f"输出格式: {output_format}")
+              
+              try:
+                  # 运行下载
+                  downloader.run_download(novel_id, save_path, output_format, start_chapter, end_chapter)
+                  print("✅ 下载完成！")
+                  
+                  # 列出下载的文件
+                  print("\n📚 下载的文件列表:")
+                  for file in os.listdir(save_path):
+                      file_path = os.path.join(save_path, file)
+                      if os.path.isfile(file_path):
+                          file_size = os.path.getsize(file_path) / 1024  # KB
+                          print(f"  📄 {file} ({file_size:.2f} KB)")
+                          
+              except Exception as e:
+                  print(f"❌ 下载失败: {str(e)}")
+                  sys.exit(1)
+
+          if __name__ == "__main__":
+              run_enhanced_download()
+          EOF
+          
+          # 重命名2.py为enhanced_novel_downloader.py以便导入
+          cp 2.py enhanced_novel_downloader.py
+          
+      - name: 设置环境变量
+        run: |
+          echo "THREADS=${{ github.event.inputs.threads }}" >> $GITHUB_ENV
+          
+      - name: 执行增强版下载
+        run: |
+          echo "🚀 启动增强版番茄小说下载器..."
+          
+          # 构建参数
+          ARGS="${{ github.event.inputs.novel_id }} ${{ github.event.inputs.format }} ${{ github.event.inputs.threads }}"
+          
+          # 添加章节范围参数（如果有）
+          if [ -n "${{ github.event.inputs.start_chapter }}" ] && [ -n "${{ github.event.inputs.end_chapter }}" ]; then
+            ARGS="$ARGS ${{ github.event.inputs.start_chapter }} ${{ github.event.inputs.end_chapter }}"
+          fi
+          
+          echo "参数: $ARGS"
+          python enhanced_download.py $ARGS
+          
+      - name: 验证下载结果
+        run: |
+          if [ -d "novel_output" ] && [ "$(ls -A novel_output)" ]; then
+            echo "✅ 下载文件验证成功"
+            echo "文件详情:"
+            ls -la novel_output/
+            
+            # 检查文件内容（仅显示前几行）
+            echo -e "\n📖 文件内容预览:"
+            for file in novel_output/*; do
+              if [ -f "$file" ]; then
+                echo "--- $(basename "$file") ---"
+                head -n 5 "$file"
+                echo "..."
+                echo ""
+              fi
+            done
+          else
+            echo "❌ 下载验证失败：输出目录为空"
+            exit 1
+          fi
           
       - name: 压缩下载结果
         run: |
-          cd novel_output && zip -r ../novel_files.zip *
+          cd novel_output
           
-      - name: 上传下载结果
+          # 根据文件数量选择压缩方式
+          file_count=$(ls -1 | wc -l)
+          
+          if [ $file_count -eq 1 ]; then
+            # 单文件直接重命名
+            file_name=$(ls -1)
+            cp "$file_name" "../novel_${{ github.event.inputs.novel_id }}.${{ github.event.inputs.format }}"
+            echo "单文件输出: novel_${{ github.event.inputs.novel_id }}.${{ github.event.inputs.format }}"
+          else
+            # 多文件压缩
+            zip -r "../novel_files_${{ github.event.inputs.novel_id }}.zip" *
+            echo "多文件压缩: novel_files_${{ github.event.inputs.novel_id }}.zip"
+          fi
+          
+      - name: 上传单文件结果
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: novel-${{ github.event.inputs.novel_id }}-${{ github.event.inputs.format }}
-          path: novel_files.zip
-          retention-days: 7  # 文件保存7天
+          path: |
+            novel_${{ github.event.inputs.novel_id }}.${{ github.event.inputs.format }}
+            novel_files_${{ github.event.inputs.novel_id }}.zip
+          retention-days: 7
+          if-no-files-found: ignore
           
-      - name: 提供下载信息
+      - name: 上传完整输出目录
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: complete-output-${{ github.event.inputs.novel_id }}
+          path: novel_output/
+          retention-days: 3
+          if-no-files-found: ignore
+          
+      - name: 生成下载报告
+        if: always()
         run: |
-          echo "✅ 小说下载完成！"
-          echo "请点击上方 'Summary' 标签，然后在 'Artifacts' 部分下载小说文件。"
-          echo "文件保存期限为7天。" 
+          echo "# 📖 番茄小说下载报告" > download_report.md
+          echo "" >> download_report.md
+          echo "## 📋 下载信息" >> download_report.md
+          echo "- **小说ID**: ${{ github.event.inputs.novel_id }}" >> download_report.md
+          echo "- **输出格式**: ${{ github.event.inputs.format }}" >> download_report.md
+          echo "- **线程数**: ${{ github.event.inputs.threads }}" >> download_report.md
+          
+          if [ -n "${{ github.event.inputs.start_chapter }}" ] && [ -n "${{ github.event.inputs.end_chapter }}" ]; then
+            echo "- **章节范围**: ${{ github.event.inputs.start_chapter }}-${{ github.event.inputs.end_chapter }}" >> download_report.md
+          else
+            echo "- **章节范围**: 全部章节" >> download_report.md
+          fi
+          
+          echo "- **下载时间**: $(date '+%Y-%m-%d %H:%M:%S UTC')" >> download_report.md
+          echo "" >> download_report.md
+          
+          if [ -d "novel_output" ] && [ "$(ls -A novel_output)" ]; then
+            echo "## ✅ 下载成功" >> download_report.md
+            echo "" >> download_report.md
+            echo "### 📁 输出文件" >> download_report.md
+            
+            for file in novel_output/*; do
+              if [ -f "$file" ]; then
+                filename=$(basename "$file")
+                filesize=$(du -h "$file" | cut -f1)
+                echo "- **$filename** ($filesize)" >> download_report.md
+              fi
+            done
+            
+          else
+            echo "## ❌ 下载失败" >> download_report.md
+            echo "请检查小说ID是否正确，或查看运行日志获取详细错误信息。" >> download_report.md
+          fi
+          
+          echo "" >> download_report.md
+          echo "## 📥 如何下载" >> download_report.md
+          echo "1. 点击页面上方的 **Summary** 标签" >> download_report.md
+          echo "2. 在 **Artifacts** 部分找到下载文件" >> download_report.md
+          echo "3. 点击对应文件进行下载" >> download_report.md
+          echo "" >> download_report.md
+          echo "💡 **提示**: 文件将保存7天，请及时下载保存。" >> download_report.md
+          
+          # 显示报告内容
+          echo "📊 生成的下载报告:"
+          cat download_report.md
+          
+      - name: 上传下载报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: download-report-${{ github.event.inputs.novel_id }}
+          path: download_report.md
+          retention-days: 7
+          
+      - name: 提供下载指引
+        if: always()
+        run: |
+          echo ""
+          echo "🎉====================================🎉"
+          echo "           番茄小说下载完成"
+          echo "🎉====================================🎉"
+          echo ""
+          if [ -d "novel_output" ] && [ "$(ls -A novel_output)" ]; then
+            echo "✅ 小说下载成功！"
+            echo ""
+            echo "📥 下载方式："
+            echo "1. 点击页面顶部的 'Summary' 标签"
+            echo "2. 在 'Artifacts' 部分找到以下文件："
+            echo "   📚 novel-${{ github.event.inputs.novel_id }}-${{ github.event.inputs.format }} (主要文件)"
+            echo "   📊 download-report-${{ github.event.inputs.novel_id }} (下载报告)"
+            echo "   📁 complete-output-${{ github.event.inputs.novel_id }} (完整输出)"
+            echo ""
+            echo "⏰ 文件保存期限："
+            echo "   - 小说文件和报告：7天"
+            echo "   - 完整输出：3天"
+            echo ""
+            echo "💡 建议优先下载主要文件，包含完整的小说内容。"
+          else
+            echo "❌ 下载过程中遇到问题"
+            echo "请检查："
+            echo "1. 小说ID是否正确"
+            echo "2. 网络连接是否正常"
+            echo "3. 查看上方日志获取详细错误信息"
+          fi
+          echo ""
